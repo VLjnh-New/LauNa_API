@@ -54,6 +54,7 @@ const BYPASS_PREFIXES = [
     '/proxy/',            // admin
     '/admin/',            // admin
     '/tools/reg/',        // tạo tài khoản — không cache, mỗi lần ra kết quả khác nhau
+    '/gpt/reggpt',        // job registration — live data, không cache
     '/healthz',
     '/readyz',
     '/challenge',
