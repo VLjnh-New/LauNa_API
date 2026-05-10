@@ -1,8 +1,26 @@
 'use strict';
 
 const crypto              = require('crypto');
-const { execFile }        = require('child_process');
+const { execFile, execSync } = require('child_process');
 const { HttpSession }     = require('./http');
+
+function _resolveCurl() {
+    const fs = require('fs');
+    try {
+        const p = execSync('which curl', { env: process.env, stdio: ['pipe','pipe','pipe'] }).toString().trim();
+        if (p && fs.existsSync(p)) return p;
+    } catch {}
+    for (const dir of (process.env.PATH || '').split(':')) {
+        try { const f = dir + '/curl'; if (fs.existsSync(f)) return f; } catch {}
+    }
+    for (const p of ['/usr/bin/curl', '/usr/local/bin/curl', '/bin/curl']) {
+        try { if (require('fs').existsSync(p)) return p; } catch {}
+    }
+    return 'curl';
+}
+const CURL_PATH = _resolveCurl();
+console.log('[gpt-reg] curl path:', CURL_PATH);
+
 const { USER_AGENT, generateRequirementsToken } = require('./sentinel');
 const { buildAuthUrl, exchangeCode } = require('./oauth');
 
@@ -105,7 +123,7 @@ class RegistrationEngine {
         args.push(url);
 
         return new Promise(resolve => {
-            execFile('curl', args, { maxBuffer: 4 * 1024 * 1024, timeout: (maxTime + 10) * 1000 }, (err, stdout) => {
+            execFile(CURL_PATH, args, { maxBuffer: 4 * 1024 * 1024, timeout: (maxTime + 10) * 1000, env: process.env }, (err, stdout) => {
                 if (err && !stdout) return resolve({ status: 0, body: '', headers: {}, error: err.message });
                 const raw = stdout || '';
 
