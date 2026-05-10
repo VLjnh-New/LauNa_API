@@ -1,0 +1,28 @@
+{
+    "ADMIN": [
+        ""
+    ],
+    "whitelist": [
+        ""
+    ],
+    "limit": {
+        "time": 1000,
+        "request-limit": 100000,
+        "strikes-for-temp": 9999,
+        "strikes-for-perm": 99999
+    },
+    "server": {
+        "port": 5000,
+        "host": "0.0.0.0"
+    },
+    "database": {
+        "connectionString": ""
+    },
+    "turnstile": {
+        "siteKey": "",
+        "secretKey": ""
+    },
+    "freeKey": {
+        "requestsPerHour": 60
+    }
+}

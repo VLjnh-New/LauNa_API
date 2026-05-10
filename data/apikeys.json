@@ -1,0 +1,19 @@
+[
+  {
+    "apikey": "VLjnh-26",
+    "type": "admin",
+    "note": "Admin master key - không giới hạn, không hiển thị, không tạo qua endpoint",
+    "createdAt": "2026-04-21T11:40:00.000Z"
+  },
+  {
+    "apikey": "launa-free-cae2ecc25fdac76a",
+    "type": "free",
+    "ip": "180.189.86.115",
+    "hourlyLimit": 60,
+    "hourly": {
+      "hour": "2026-05-02T09",
+      "used": 0
+    },
+    "createdAt": "2026-05-02T09:21:57.503Z"
+  }
+]

@@ -1,0 +1,61 @@
+{
+  "name": "launa-api",
+  "version": "4.1.1",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "NODE_ENV=development node index.js",
+    "init-db": "node utils/data/init-db.js",
+    "test": "node --test tests/",
+    "routes": "node -e \"const {loadedRoutes}=require('./app/server');const all=Object.values(loadedRoutes).flat();console.log('Routes:',all.length);all.forEach(r=>console.log(' ',r.name))\"",
+    "health": "node -e \"const http=require('http');const req=http.get('http://localhost:5050/healthz',r=>{let b='';r.on('data',d=>b+=d);r.on('end',()=>console.log(JSON.parse(b).data))});req.on('error',e=>console.error(e.message))\"",
+    "cache:clear": "node -e \"const http=require('http');const opts={hostname:'localhost',port:5050,path:'/admin/cache/clear',method:'POST',headers:{'Content-Type':'application/json','x-api-key':require('./data/apikeys.json').find(k=>k.type==='admin').apikey}};const req=http.request(opts,r=>{let b='';r.on('data',d=>b+=d);r.on('end',()=>console.log(JSON.parse(b)))});req.write('{}');req.end()\"",
+    "keys:list": "node -e \"const fs=require('fs');const arr=JSON.parse(fs.readFileSync('./data/apikeys.json'));console.table(arr.map(k=>({...k,apikey:k.apikey.slice(0,10)+'...'})))\""
+  },
+  "keywords": [],
+  "author": "Ljzi",
+  "description": "API Bình Dân",
+  "license": "ISC",
+  "dependencies": {
+    "@octokit/rest": "^21.1.1",
+    "archiver": "^7.0.1",
+    "axios": "^1.15.2",
+    "chalk": "^4.1.2",
+    "cheerio": "^1.2.0",
+    "compression": "^1.8.1",
+    "cors": "^2.8.6",
+    "crypto-js": "^4.2.0",
+    "express": "^4.22.1",
+    "ffmpeg-static": "^5.3.0",
+    "fluent-ffmpeg": "^2.1.3",
+    "form-data": "^4.0.5",
+    "fs-extra": "^10.1.0",
+    "helmet": "^5.1.1",
+    "http-proxy": "^1.18.1",
+    "https-proxy-agent": "^9.0.0",
+    "ipware": "^2.0.0",
+    "js-yaml": "^4.1.1",
+    "jsdom": "^29.1.1",
+    "libsodium-wrappers": "^0.7.16",
+    "lru-cache": "^11.3.5",
+    "msedge-tts": "^2.0.5",
+    "multer": "^2.1.1",
+    "pg": "^8.20.0",
+    "protobufjs": "^8.0.3",
+    "redis": "^5.12.1",
+    "sharp": "^0.34.5",
+    "swagger-ui-express": "^5.0.1",
+    "telegraf": "^4.16.3",
+    "totp-generator": "^2.0.1",
+    "undici": "^6.25.0",
+    "uuid": "^14.0.0",
+    "ws": "^8.20.0",
+    "zod": "^3.25.76"
+  },
+  "directories": {
+    "lib": "lib"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

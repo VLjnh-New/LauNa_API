@@ -1,0 +1,71 @@
+# ───────────────────────────────────────────────────────────────
+#  Mini Shield — Config tối ưu cho REST API LauNa
+#  Đã tắt các tính năng gây false-positive với bot/script clients.
+#  Khi chạy chung process với LauNa, các giá trị `proxy.port`,
+#  `proxy.upstream`, `dashboard.port` sẽ được index.js gốc ghi đè.
+# ───────────────────────────────────────────────────────────────
+
+proxy:
+  port: 5000                          # ghi đè bởi $PORT trên Render
+  upstream: "http://127.0.0.1:5050"   # ghi đè bởi index.js của LauNa
+  trustProxy: true                    # đọc IP thật qua Cloudflare/Render
+  proxyTimeout: 300000                # 5 phút — đủ cho AI streaming, tránh treo connection
+
+dashboard:
+  port: 5000                          # = proxy.port → combined mode
+  username: "admin"
+  password: "ĐỔI-MẬT-KHẨU-MẠNH-TẠI-ĐÂY"   # nên đặt qua DASHBOARD_PASSWORD env
+
+demoBackend:
+  enabled: false
+
+# ─── Rate limit: TẮT ──────────────────────────────────────────
+# Lý do: Cloudflare đứng trước → Mini Shield thấy IP CF, không
+# rate-limit đúng được. Đã có ddos.js trong LauNa lo việc này.
+rateLimit:
+  enabled: false
+  windowMs: 1000
+  maxRequests: 30
+  burst: 60
+
+# ─── Auto-ban: TẮT ────────────────────────────────────────────
+# LauNa đã có cơ chế ban riêng (data/block/listIP.json),
+# tránh 2 tầng ban xung đột nhau khó debug.
+ban:
+  enabled: false
+  maxViolations: 5
+  durationMs: 600000
+
+# ─── WAF: BẬT nhưng chỉ LOG, KHÔNG chặn ──────────────────────
+# Lý do: API nhận prompt AI, share-file content, URL có ký tự lạ
+# → blockOnMatch=true sẽ chặn nhầm rất nhiều request hợp lệ.
+# Đặt blockOnMatch=false để chỉ ghi log, bạn xem dashboard để
+# theo dõi traffic đáng ngờ rồi quyết định ban thủ công.
+waf:
+  enabled: true
+  blockOnMatch: false
+  maxBodyBytes: 0          # 0 = KHÔNG kiểm tra body (tránh consume request stream)
+
+# ─── Bot detect: TẮT ──────────────────────────────────────────
+# LauNa được gọi từ axios, python-requests, okhttp, Telegram bot…
+# UA của các thư viện này nằm trong "known bad" → bị chặn nhầm.
+botDetect:
+  enabled: false
+  blockEmptyUA: false
+  blockKnownBadUA: false
+
+# ─── JS PoW challenge: TẮT ────────────────────────────────────
+# Bot/mobile app không có JS engine → không giải được → 403 vĩnh viễn.
+challenge:
+  enabled: false
+  difficulty: 4
+  cookieName: "ms_pow"
+  cookieTTLms: 3600000
+  triggerWhenSuspicious: false
+
+# ─── White / Blacklist ────────────────────────────────────────
+whitelistIps: []
+blacklistIps: []
+
+logging:
+  level: "info"

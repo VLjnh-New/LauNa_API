@@ -1,0 +1,106 @@
+services:
+  - type: web
+    name: launa-api
+    runtime: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /healthz
+    autoDeploy: true
+
+    envVars:
+      # ── Runtime ──────────────────────────────────────────────────────────────
+      - key: NODE_ENV
+        value: production
+
+      # ── Mini Shield ports ─────────────────────────────────────────────────────
+      - key: LAUNA_PORT
+        value: "5050"
+
+      # ── Mini Shield dashboard ─────────────────────────────────────────────────
+      - key: DASHBOARD_BASE_PATH
+        value: /__shield
+      - key: DASHBOARD_USERNAME
+        value: admin
+      - key: DASHBOARD_PASSWORD
+        generateValue: true
+
+      # ── Keep-alive (chống sleep free tier) ───────────────────────────────────
+      - key: SELF_PING_INTERVAL_MS
+        value: "600000"
+
+      # ── Telegram bot ──────────────────────────────────────────────────────────
+      # Điền trong Render dashboard → Environment → Secret Files
+      # Render chạy polling mode (không cần BOT_WEBHOOK_URL)
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      # Username admin Telegram (ngăn cách bằng dấu phẩy, vd: Lizjiii,OtherAdmin)
+      - key: TELEGRAM_ADMIN_USERNAMES
+        sync: false
+
+      # ── Media URL cloak (AES-256) ─────────────────────────────────────────────
+      # QUAN TRỌNG: Đặt giá trị cố định để link /ai/media không hỏng sau redeploy.
+      # Tạo bằng: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      # Sau đó paste vào Render dashboard → Secret Files (KHÔNG commit lên git)
+      - key: MEDIA_CLOAK_KEY
+        sync: false
+
+      # ── Database (PostgreSQL) ─────────────────────────────────────────────────
+      # Bỏ comment và điền sau khi thêm PostgreSQL add-on trên Render dashboard.
+      # Khi có DATABASE_URL, các tính năng: /note, /shortener, request stats sẽ hoạt động.
+      # - key: DATABASE_URL
+      #   fromDatabase:
+      #     name: launa-db
+      #     property: connectionString
+
+      # ── Redis ────────────────────────────────────────────────────────────────
+      # Tuỳ chọn. Nếu không set, rate-limit dùng in-memory (ổn cho 1 instance).
+      # - key: REDIS_URL
+      #   sync: false
+
+      # ── Cloudflare Turnstile ──────────────────────────────────────────────────
+      # Tuỳ chọn. Bảo vệ endpoint /download/all và một số route.
+      # - key: TURNSTILE_SITE_KEY
+      #   sync: false
+      # - key: TURNSTILE_SECRET_KEY
+      #   sync: false
+
+      # ── AI – Gemini / Google Vision ───────────────────────────────────────────
+      # Cần cho /ai/vision và các tính năng dùng Gemini API.
+      # - key: GEMINI_API_KEY
+      #   sync: false
+
+      # ── AI – CapSolver (CAPTCHA) ──────────────────────────────────────────────
+      # Cần cho /tools/buff-tiktok với provider tikfames.
+      # - key: CAPSOLVER_KEY
+      #   sync: false
+
+      # ── AI – DuckDuckGo proxy ─────────────────────────────────────────────────
+      # Comma-separated proxy URLs: http://user:pass@host:port,...
+      # - key: DUCK_PROXIES
+      #   sync: false
+
+      # ── VietQR – Tra cứu tài khoản ngân hàng ─────────────────────────────────
+      # Cần cho /bank-lookup. Đăng ký tại https://www.vietqr.io/
+      # - key: VIETQR_CLIENT_ID
+      #   sync: false
+      # - key: VIETQR_API_KEY
+      #   sync: false
+
+      # ── Thanh toán (Telegram bot payment) ────────────────────────────────────
+      # Cấu hình tài khoản nhận tiền. Có thể đặt qua bot /payment_setup thay thế.
+      # - key: PAYMENT_VIETINBANK_STK
+      #   sync: false
+      # - key: PAYMENT_VIETINBANK_NAME
+      #   sync: false
+      # - key: PAYMENT_MOMO_PHONE
+      #   sync: false
+      # - key: PAYMENT_MOMO_NAME
+      #   sync: false
+
+      # ── RAM alert (Telegram notify) ───────────────────────────────────────────
+      # - key: RAM_ALERT_MB
+      #   value: "450"
+
+      # ── Rate-limit fine-tuning ────────────────────────────────────────────────
+      # - key: FREE_KEY_HOURLY_LIMIT
+      #   value: "60"
