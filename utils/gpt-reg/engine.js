@@ -259,8 +259,8 @@ class RegistrationEngine {
             });
             const m   = /loc=([A-Z]+)/.exec(r.text);
             const loc = m ? m[1] : 'UNKNOWN';
-            const blocked   = ['CN', 'HK', 'MO', 'TW'];
-            const needProxy = ['IN', 'VN', 'PK', 'BD', 'NG', 'GH', 'ET', 'KE', 'TZ', 'UG'];
+            const blocked   = [];
+            const needProxy = [];
             if (blocked.includes(loc)) return { ok: false, loc, reason: 'country_blocked' };
             if (needProxy.includes(loc) && !this.proxyUrl) {
                 return { ok: false, loc, reason: 'proxy_required', msg: `IP từ ${loc} — cần proxy US/EU` };
