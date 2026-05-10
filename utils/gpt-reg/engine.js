@@ -3,7 +3,7 @@
 const crypto              = require('crypto');
 const { execFile }        = require('child_process');
 const { HttpSession }     = require('./http');
-const { USER_AGENT }      = require('./sentinel');
+const { USER_AGENT, generateRequirementsToken } = require('./sentinel');
 const { buildAuthUrl, exchangeCode } = require('./oauth');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -259,11 +259,13 @@ class RegistrationEngine {
             });
             const m   = /loc=([A-Z]+)/.exec(r.text);
             const loc = m ? m[1] : 'UNKNOWN';
-            const blocked   = [];
-            const needProxy = [];
-            if (blocked.includes(loc)) return { ok: false, loc, reason: 'country_blocked' };
+            // Countries completely blocked by OpenAI
+            const blocked = ['CN', 'HK', 'MO', 'TW'];
+            if (blocked.includes(loc)) return { ok: false, loc, reason: 'country_blocked', msg: `OpenAI không hỗ trợ quốc gia ${loc}` };
+            // Countries where OpenAI blocks registration without a US/EU proxy
+            const needProxy = ['IN', 'VN', 'PK', 'BD', 'RU', 'BY', 'CU', 'IR', 'KP', 'SY'];
             if (needProxy.includes(loc) && !this.proxyUrl) {
-                return { ok: false, loc, reason: 'proxy_required', msg: `IP từ ${loc} — cần proxy US/EU` };
+                return { ok: false, loc, reason: 'proxy_required', msg: `IP từ ${loc} bị OpenAI chặn đăng ký — cần proxy US/EU` };
             }
             return { ok: true, loc };
         } catch (e) {
@@ -305,7 +307,7 @@ class RegistrationEngine {
                         referer:  'https://sentinel.openai.com/backend-api/sentinel/frame.html?sv=20260219f9f6',
                         'content-type': 'text/plain;charset=UTF-8',
                     },
-                    data: JSON.stringify({ p: '', id: did, flow }),
+                    data: JSON.stringify({ p: generateRequirementsToken(did, USER_AGENT), id: did, flow }),
                     allowRedirects: false,
                 });
                 if (r.status !== 200) {
@@ -327,7 +329,8 @@ class RegistrationEngine {
 
     _sentinelHeader(token, did, flow = 'authorize_continue') {
         if (!token || !did) return null;
-        return JSON.stringify({ p: '', t: '', c: token, id: did, flow });
+        const p = generateRequirementsToken(did, USER_AGENT);
+        return JSON.stringify({ p, t: '', c: token, id: did, flow });
     }
 
     // ── Bước 4: Submit email form ─────────────────────────────────────────────
