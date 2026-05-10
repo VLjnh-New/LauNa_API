@@ -132,16 +132,26 @@ class RegistrationEngine {
                 const status = m ? parseInt(m[1]) : 0;
 
                 const respH = {};
+                const setCookies = [];
                 for (const line of lines.slice(1)) {
                     const col = line.indexOf(':');
-                    if (col > 0) respH[line.slice(0, col).toLowerCase().trim()] = line.slice(col + 1).trim();
+                    if (col > 0) {
+                        const key = line.slice(0, col).toLowerCase().trim();
+                        const val = line.slice(col + 1).trim();
+                        if (key === 'set-cookie') {
+                            setCookies.push(val);
+                        } else {
+                            respH[key] = val;
+                        }
+                    }
                 }
+                if (setCookies.length > 0) respH['set-cookie'] = setCookies[setCookies.length - 1];
 
-                // Capture set-cookie into session
-                if (respH['set-cookie']) {
+                // Capture ALL set-cookie headers into session
+                if (setCookies.length > 0) {
                     try {
                         const urlObj = new URL(url);
-                        this.session.cookies.setCookies([respH['set-cookie']], urlObj);
+                        this.session.cookies.setCookies(setCookies, urlObj);
                     } catch {}
                 }
 
