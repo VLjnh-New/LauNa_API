@@ -1,25 +1,34 @@
 'use strict';
 
-const crypto              = require('crypto');
-const { execFile, execSync } = require('child_process');
-const { HttpSession }     = require('./http');
+const crypto          = require('crypto');
+const { request: undiciRequest, Agent } = require('undici');
+const { HttpSession } = require('./http');
 
-function _resolveCurl() {
-    const fs = require('fs');
-    try {
-        const p = execSync('which curl', { env: process.env, stdio: ['pipe','pipe','pipe'] }).toString().trim();
-        if (p && fs.existsSync(p)) return p;
-    } catch {}
-    for (const dir of (process.env.PATH || '').split(':')) {
-        try { const f = dir + '/curl'; if (fs.existsSync(f)) return f; } catch {}
-    }
-    for (const p of ['/usr/bin/curl', '/usr/local/bin/curl', '/bin/curl']) {
-        try { if (require('fs').existsSync(p)) return p; } catch {}
-    }
-    return 'curl';
-}
-const CURL_PATH = _resolveCurl();
-console.log('[gpt-reg] curl path:', CURL_PATH);
+// Firefox 122 TLS profile for undici — bypasses JA3 fingerprint detection
+const FF_CIPHERS = [
+    'TLS_AES_128_GCM_SHA256',
+    'TLS_CHACHA20_POLY1305_SHA256',
+    'TLS_AES_256_GCM_SHA384',
+    'ECDHE-ECDSA-AES128-GCM-SHA256',
+    'ECDHE-RSA-AES128-GCM-SHA256',
+    'ECDHE-ECDSA-CHACHA20-POLY1305',
+    'ECDHE-RSA-CHACHA20-POLY1305',
+    'ECDHE-ECDSA-AES256-GCM-SHA384',
+    'ECDHE-RSA-AES256-GCM-SHA384',
+    'ECDHE-ECDSA-AES256-SHA',
+    'ECDHE-RSA-AES256-SHA',
+    'DHE-RSA-AES128-GCM-SHA256',
+    'DHE-RSA-AES256-GCM-SHA384',
+].join(':');
+
+const FF_TLS_CONNECT = {
+    rejectUnauthorized: false,
+    ciphers:    FF_CIPHERS,
+    minVersion: 'TLSv1.2',
+    maxVersion: 'TLSv1.3',
+};
+
+console.log('[gpt-reg] using undici with Firefox TLS profile (no system curl needed)');
 
 const { USER_AGENT, generateRequirementsToken } = require('./sentinel');
 const { buildAuthUrl, exchangeCode } = require('./oauth');
@@ -84,98 +93,73 @@ class RegistrationEngine {
         this.oauthCtx    = null;
     }
 
-    // ── System curl wrapper (bypasses TLS fingerprint detection) ─────────────
-    // Node.js native HTTPS bị block tại register endpoint vì TLS fingerprint.
-    // System curl dùng OpenSSL nhưng có JA3 khác → được accept.
+    // ── undici wrapper với Firefox TLS fingerprint (thay thế system curl) ─────
+    // Dùng undici + custom TLS ciphers để bypass JA3 fingerprint detection
+    // mà không cần system curl binary.
     async _curlExec(url, opts = {}) {
         const { method = 'GET', data = null, headers = {}, followRedirects = false, maxTime = 35 } = opts;
         if (!this.session) this.session = new HttpSession({ timeout: maxTime * 1000, proxy: this.proxyUrl });
 
         const allHeaders = {
-            'User-Agent':      USER_AGENT,
-            'Accept':          'application/json',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Sec-Fetch-Dest':  'empty',
-            'Sec-Fetch-Mode':  'cors',
-            'Sec-Fetch-Site':  'same-origin',
-            'X-Requested-With': 'XMLHttpRequest',
-            'DNT': '1',
-            ...headers,
+            'user-agent':       USER_AGENT,
+            'accept':           'application/json',
+            'accept-language':  'en-US,en;q=0.5',
+            'accept-encoding':  'gzip, deflate, br',
+            'sec-fetch-dest':   'empty',
+            'sec-fetch-mode':   'cors',
+            'sec-fetch-site':   'same-origin',
+            'x-requested-with': 'XMLHttpRequest',
+            'dnt':              '1',
+            ...Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
         };
-        if (data && !Object.keys(allHeaders).some(k => k.toLowerCase() === 'content-type')) {
-            allHeaders['Content-Type'] = 'application/json';
+        if (data && !Object.keys(allHeaders).some(k => k === 'content-type')) {
+            allHeaders['content-type'] = 'application/json';
         }
 
         // Inject cookies từ HttpSession CookieJar
         try {
             const cookieHdr = this.session.cookies.header(new URL(url));
-            if (cookieHdr) allHeaders['Cookie'] = cookieHdr;
+            if (cookieHdr) allHeaders['cookie'] = cookieHdr;
         } catch {}
 
-        const args = ['-s', '-i', '--compressed', '-X', method, '--max-time', String(maxTime), '-k'];
-        if (followRedirects) args.push('-L', '--max-redirs', '12');
-        for (const [k, v] of Object.entries(allHeaders)) {
-            if (v !== null && v !== undefined) args.push('-H', `${k}: ${v}`);
+        const connectOpts = { ...FF_TLS_CONNECT };
+        if (this.proxyUrl) {
+            try {
+                const pu = new URL(this.proxyUrl.startsWith('http') ? this.proxyUrl : 'http://' + this.proxyUrl);
+                connectOpts.proxy = { uri: pu.origin, token: pu.username ? `Basic ${Buffer.from(`${decodeURIComponent(pu.username)}:${decodeURIComponent(pu.password)}`).toString('base64')}` : undefined };
+            } catch {}
         }
-        if (data) args.push('-d', String(data));
-        // Proxy support
-        if (this.proxyUrl) args.push('-x', this.proxyUrl);
-        args.push(url);
 
-        return new Promise(resolve => {
-            execFile(CURL_PATH, args, { maxBuffer: 4 * 1024 * 1024, timeout: (maxTime + 10) * 1000, env: process.env }, (err, stdout) => {
-                if (err && !stdout) return resolve({ status: 0, body: '', headers: {}, error: err.message });
-                const raw = stdout || '';
-
-                // When -i is used and -L follows redirects, output contains multiple HTTP blocks.
-                // Find the LAST HTTP/ block (final response).
-                let lastIdx = -1;
-                let search = 0;
-                while (true) {
-                    const idx = raw.indexOf('HTTP/', search);
-                    if (idx < 0) break;
-                    lastIdx = idx;
-                    search = idx + 1;
-                }
-                if (lastIdx < 0) return resolve({ status: 0, body: raw, headers: {} });
-
-                const fromHttp = raw.slice(lastIdx);
-                const sep = fromHttp.indexOf('\r\n\r\n') >= 0 ? fromHttp.indexOf('\r\n\r\n') : fromHttp.indexOf('\n\n');
-                const eol = fromHttp.indexOf('\r\n\r\n') >= 0 ? 4 : 2;
-                const headerStr = sep >= 0 ? fromHttp.slice(0, sep) : fromHttp;
-                const body      = sep >= 0 ? fromHttp.slice(sep + eol) : '';
-
-                const lines  = headerStr.split(/\r?\n/);
-                const m      = (lines[0] || '').match(/HTTP\/[\d.]+ (\d+)/);
-                const status = m ? parseInt(m[1]) : 0;
-
-                const respH = {};
-                const setCookies = [];
-                for (const line of lines.slice(1)) {
-                    const col = line.indexOf(':');
-                    if (col > 0) {
-                        const key = line.slice(0, col).toLowerCase().trim();
-                        const val = line.slice(col + 1).trim();
-                        if (key === 'set-cookie') {
-                            setCookies.push(val);
-                        } else {
-                            respH[key] = val;
-                        }
-                    }
-                }
-                if (setCookies.length > 0) respH['set-cookie'] = setCookies[setCookies.length - 1];
-
-                // Capture ALL set-cookie headers into session
-                if (setCookies.length > 0) {
-                    try {
-                        const urlObj = new URL(url);
-                        this.session.cookies.setCookies(setCookies, urlObj);
-                    } catch {}
-                }
-
-                resolve({ status, body: body.trim(), headers: respH });
+        try {
+            const agent = new Agent({ connect: connectOpts, bodyTimeout: maxTime * 1000, headersTimeout: maxTime * 1000 });
+            const res = await undiciRequest(url, {
+                method,
+                headers:         allHeaders,
+                body:            data ? String(data) : undefined,
+                maxRedirections: followRedirects ? 12 : 0,
+                dispatcher:      agent,
             });
-        });
+
+            const chunks = [];
+            for await (const chunk of res.body) chunks.push(chunk);
+            const body = Buffer.concat(chunks).toString('utf8');
+
+            // Capture response cookies into session
+            const rawCookies = res.headers['set-cookie'];
+            if (rawCookies) {
+                const list = Array.isArray(rawCookies) ? rawCookies : [rawCookies];
+                try { this.session.cookies.setCookies(list, new URL(url)); } catch {}
+            }
+
+            const respH = {};
+            for (const [k, v] of Object.entries(res.headers)) {
+                respH[k.toLowerCase()] = Array.isArray(v) ? v[v.length - 1] : v;
+            }
+
+            return { status: res.statusCode, body: body.trim(), headers: respH };
+        } catch (e) {
+            return { status: 0, body: '', headers: {}, error: e.message };
+        }
     }
 
     // ── HTTP wrapper (replaces curl) ──────────────────────────────────────────
